@@ -181,6 +181,21 @@
             box-shadow: 0 5px 15px rgba(33, 150, 243, 0.3);
         }
 
+        .btn-send {
+            background: linear-gradient(135deg, #ff9800, #f57c00);
+            color: white;
+        }
+
+        .btn-send:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 152, 0, 0.3);
+        }
+
+        .btn-send:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
@@ -396,8 +411,133 @@
             opacity: 0.7;
         }
 
-        .status-refresh:hover {
-            opacity: 1;
+        .speech-preview {
+            background: #1a1a1a;
+            border-radius: 10px;
+            padding: 15px;
+            min-height: 80px;
+            border: 2px solid #333;
+            font-family: 'Courier New', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .speech-preview.listening {
+            border-color: #4caf50;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+            animation: listening-glow 2s infinite ease-in-out;
+        }
+
+        .preview-content {
+            display: flex;
+            align-items: center;
+            min-height: 50px;
+        }
+
+        .preview-text {
+            color: #00ff00;
+            font-size: 1.1em;
+            line-height: 1.4;
+            margin-right: 5px;
+            word-wrap: break-word;
+        }
+
+        .preview-text.interim {
+            color: #ffff00;
+            opacity: 0.8;
+        }
+
+        .preview-text.final {
+            color: #00ff00;
+            font-weight: bold;
+        }
+
+        .preview-text.empty {
+            color: #666;
+            font-style: italic;
+        }
+
+        .preview-cursor {
+            color: #00ff00;
+            font-size: 1.2em;
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        .preview-cursor.hidden {
+            display: none;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        @keyframes listening-glow {
+            0%, 100% { 
+                border-color: #4caf50;
+                box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+            }
+            50% { 
+                border-color: #66bb6a;
+                box-shadow: 0 0 30px rgba(76, 175, 80, 0.5);
+            }
+        }
+
+        .speech-preview.waiting-for-pause {
+            border-color: #ff9800;
+            box-shadow: 0 0 20px rgba(255, 152, 0, 0.4);
+        }
+
+        .pause-indicator {
+            position: absolute;
+            top: 5px;
+            right: 10px;
+            background: rgba(255, 152, 0, 0.9);
+            color: #1a1a1a;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: bold;
+            animation: pulse-orange 1s infinite;
+        }
+
+        @keyframes pulse-orange {
+            0%, 100% { 
+                background: rgba(255, 152, 0, 0.9);
+                transform: scale(1);
+            }
+            50% { 
+                background: rgba(255, 193, 7, 0.9);
+                transform: scale(1.05);
+            }
+        }
+
+        .volume-indicator {
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+            display: flex;
+            gap: 2px;
+            align-items: flex-end;
+        }
+
+        .volume-bar {
+            width: 3px;
+            background: #4caf50;
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+
+        .volume-bar:nth-child(1) { height: 8px; }
+        .volume-bar:nth-child(2) { height: 12px; }
+        .volume-bar:nth-child(3) { height: 16px; }
+        .volume-bar:nth-child(4) { height: 20px; }
+        .volume-bar:nth-child(5) { height: 24px; }
+
+        .volume-bar.active {
+            background: #66bb6a;
+            box-shadow: 0 0 4px rgba(76, 175, 80, 0.6);
         }
 
         @media (max-width: 768px) {
@@ -437,6 +577,23 @@
         <div class="main-content">
             <div class="left-panel">
                 <div class="section">
+                    <h3>🎤 Live Speech Preview</h3>
+                    <div id="speechPreview" class="speech-preview">
+                        <div class="preview-content">
+                            <span id="previewText" class="preview-text">Start speaking to see live preview...</span>
+                            <span id="previewCursor" class="preview-cursor">|</span>
+                        </div>
+                        <div class="volume-indicator">
+                            <div class="volume-bar"></div>
+                            <div class="volume-bar"></div>
+                            <div class="volume-bar"></div>
+                            <div class="volume-bar"></div>
+                            <div class="volume-bar"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
                     <h3>🗣️ What You Heard</h3>
                     <div id="conversationDisplay" class="conversation-display">
                         <div class="empty-state">
@@ -461,6 +618,7 @@
         <div class="controls">
             <button id="startBtn" class="btn btn-start">Start Listening</button>
             <button id="stopBtn" class="btn btn-stop" disabled>Stop Listening</button>
+            <button id="sendBtn" class="btn btn-send" disabled>Send Now</button>
             <button id="copyBtn" class="btn btn-copy">Copy All Responses</button>
             <div class="status-indicator">
                 <div id="statusDot" class="status-dot"></div>
@@ -493,6 +651,12 @@
                 this.conversationHistory = [];
                 this.currentScript = '';
                 
+                // Speech timeout management
+                this.speechTimeout = null;
+                this.SPEECH_TIMEOUT = 3000; // 3 seconds
+                this.lastInterimText = '';
+                this.pendingFinalText = '';
+                
                 this.initializeElements();
                 this.setupEventListeners();
                 this.initializeSocket();
@@ -503,6 +667,7 @@
             initializeElements() {
                 this.startBtn = document.getElementById('startBtn');
                 this.stopBtn = document.getElementById('stopBtn');
+                this.sendBtn = document.getElementById('sendBtn');
                 this.copyBtn = document.getElementById('copyBtn');
                 this.statusDot = document.getElementById('statusDot');
                 this.statusText = document.getElementById('statusText');
@@ -510,11 +675,15 @@
                 this.scriptDisplay = document.getElementById('scriptDisplay');
                 this.errorContainer = document.getElementById('errorContainer');
                 this.connectionStatus = document.getElementById('connectionStatus');
+                this.speechPreview = document.getElementById('speechPreview');
+                this.previewText = document.getElementById('previewText');
+                this.previewCursor = document.getElementById('previewCursor');
             }
 
             setupEventListeners() {
                 this.startBtn.addEventListener('click', () => this.startMonitoring());
                 this.stopBtn.addEventListener('click', () => this.stopMonitoring());
+                this.sendBtn.addEventListener('click', () => this.forceSendSpeech());
                 this.copyBtn.addEventListener('click', () => this.copyScript());
             }
 
@@ -584,6 +753,7 @@
 
                 this.recognition.onstart = () => {
                     this.updateStatus('Listening...', true);
+                    this.updateSpeechPreview('', true, false); // Clear preview and show listening state
                 };
 
                 this.recognition.onresult = (event) => {
@@ -592,9 +762,11 @@
 
                 this.recognition.onerror = (event) => {
                     this.handleSpeechError(event);
+                    this.updateSpeechPreview('Error in speech recognition', false, false);
                 };
 
                 this.recognition.onend = () => {
+                    this.updateSpeechPreview('', false, false); // Clear preview when stopped
                     if (this.isListening) {
                         setTimeout(() => {
                             if (this.isListening) {
@@ -613,6 +785,7 @@
                 let finalTranscript = '';
                 let interimTranscript = '';
 
+                // Process all results
                 for (let i = event.resultIndex; i < event.results.length; i++) {
                     const transcript = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
@@ -622,25 +795,185 @@
                     }
                 }
 
-                // Send interim results to server via WebSocket
-                if (interimTranscript) {
-                    this.socket.emit('speech_result', {
-                        session_id: this.sessionId,
-                        transcript: interimTranscript,
-                        is_final: false
-                    });
+                // Combine final and interim for current display
+                const currentText = finalTranscript + interimTranscript;
+                
+                // Update the live preview immediately
+                this.updateSpeechPreview(currentText, this.isListening, false);
+
+                // Handle speech timeout logic
+                if (currentText.trim() !== '') {
+                    // Enable send button when we have speech
+                    this.sendBtn.disabled = false;
+                    
+                    // Clear existing timeout since we have new speech
+                    if (this.speechTimeout) {
+                        clearTimeout(this.speechTimeout);
+                        this.speechTimeout = null;
+                    }
+
+                    // Store the current text
+                    this.lastInterimText = currentText;
+                    this.pendingFinalText = finalTranscript;
+
+                    // Show countdown in preview
+                    this.showSpeechCountdown();
+
+                    // Set new timeout for 3 seconds of silence
+                    this.speechTimeout = setTimeout(() => {
+                        this.processSpeechCompletion();
+                    }, this.SPEECH_TIMEOUT);
+
+                    // Send interim results to server for real-time feedback (optional)
+                    if (interimTranscript && this.socket) {
+                        this.socket.emit('speech_result', {
+                            session_id: this.sessionId,
+                            transcript: interimTranscript,
+                            is_final: false
+                        });
+                    }
+                } else {
+                    // Disable send button when no speech
+                    this.sendBtn.disabled = true;
                 }
 
-                if (finalTranscript) {
-                    this.socket.emit('speech_result', {
-                        session_id: this.sessionId,
-                        transcript: finalTranscript,
-                        is_final: true
-                    });
-                    
-                    this.addToConversation('user', finalTranscript);
-                    this.generateAIResponse(finalTranscript);
+                // If we get a natural final result but haven't timed out yet, 
+                // just update our pending text but don't process immediately
+                if (finalTranscript && this.speechTimeout) {
+                    this.pendingFinalText = finalTranscript;
+                    // Don't process immediately - wait for the 3-second timeout
                 }
+            }
+
+            processSpeechCompletion() {
+                // Clear the timeout
+                if (this.speechTimeout) {
+                    clearTimeout(this.speechTimeout);
+                    this.speechTimeout = null;
+                }
+
+                // Disable send button
+                this.sendBtn.disabled = true;
+
+                // Get the final text to process
+                const textToProcess = this.pendingFinalText || this.lastInterimText;
+                
+                if (textToProcess && textToProcess.trim() !== '') {
+                    // Update preview to show it's final
+                    this.updateSpeechPreview(textToProcess, this.isListening, true);
+
+                    // Send final result to server
+                    if (this.socket) {
+                        this.socket.emit('speech_result', {
+                            session_id: this.sessionId,
+                            transcript: textToProcess,
+                            is_final: true
+                        });
+                    }
+                    
+                    // Add to conversation and generate AI response
+                    this.addToConversation('user', textToProcess);
+                    this.generateAIResponse(textToProcess);
+                    
+                    // Clear preview after processing
+                    setTimeout(() => {
+                        this.updateSpeechPreview('', this.isListening, false);
+                        this.lastInterimText = '';
+                        this.pendingFinalText = '';
+                    }, 1500);
+                }
+            }
+
+            showSpeechCountdown() {
+                // Visual indicator that we're waiting for the 3-second pause
+                const previewElement = this.speechPreview;
+                if (previewElement) {
+                    previewElement.classList.add('waiting-for-pause');
+                    
+                    // Remove the class after a short time for visual feedback
+                    setTimeout(() => {
+                        if (previewElement) {
+                            previewElement.classList.remove('waiting-for-pause');
+                        }
+                    }, 300);
+                }
+            }
+
+            updateSpeechPreview(text, isListening, isFinal) {
+                if (!this.speechPreview || !this.previewText || !this.previewCursor) {
+                    return;
+                }
+
+                // Update preview container visual state
+                if (isListening) {
+                    this.speechPreview.classList.add('listening');
+                } else {
+                    this.speechPreview.classList.remove('listening');
+                }
+
+                // Update preview text
+                if (text.trim() === '') {
+                    if (isListening) {
+                        this.previewText.textContent = 'Listening... speak now (3-sec pause to send)';
+                        this.previewText.className = 'preview-text empty';
+                        this.previewCursor.classList.remove('hidden');
+                    } else {
+                        this.previewText.textContent = 'Start speaking to see live preview...';
+                        this.previewText.className = 'preview-text empty';
+                        this.previewCursor.classList.add('hidden');
+                    }
+                } else {
+                    this.previewText.textContent = text;
+                    if (isFinal) {
+                        this.previewText.className = 'preview-text final';
+                        this.previewCursor.classList.add('hidden');
+                    } else {
+                        // Show that we're waiting for pause
+                        this.previewText.className = 'preview-text interim';
+                        this.previewCursor.classList.remove('hidden');
+                        
+                        // Add visual indicator for waiting
+                        if (this.speechTimeout) {
+                            this.addPauseWaitingIndicator();
+                        }
+                    }
+                }
+
+                // Add volume visualization (simple simulation)
+                if (isListening && text.trim() !== '') {
+                    this.animateVolumeIndicator();
+                }
+            }
+
+            addPauseWaitingIndicator() {
+                // Add visual feedback showing we're waiting for the 3-second pause
+                const indicator = this.speechPreview.querySelector('.pause-indicator');
+                if (!indicator) {
+                    const pauseIndicator = document.createElement('div');
+                    pauseIndicator.className = 'pause-indicator';
+                    pauseIndicator.textContent = 'Waiting for 3-sec pause...';
+                    this.speechPreview.appendChild(pauseIndicator);
+                    
+                    // Remove after a few seconds
+                    setTimeout(() => {
+                        if (pauseIndicator && pauseIndicator.parentNode) {
+                            pauseIndicator.parentNode.removeChild(pauseIndicator);
+                        }
+                    }, 2000);
+                }
+            }
+
+            animateVolumeIndicator() {
+                // Simple volume animation - you could enhance this with actual audio level detection
+                const volumeBars = this.speechPreview.querySelectorAll('.volume-bar');
+                volumeBars.forEach((bar, index) => {
+                    const shouldBeActive = Math.random() > 0.5;
+                    if (shouldBeActive) {
+                        bar.classList.add('active');
+                    } else {
+                        bar.classList.remove('active');
+                    }
+                });
             }
 
             handleTranscriptUpdate(data) {
@@ -810,7 +1143,11 @@
                 this.isListening = true;
                 this.startBtn.disabled = true;
                 this.stopBtn.disabled = false;
+                this.sendBtn.disabled = true; // Start disabled until we have speech
                 this.clearError();
+                
+                // Initialize speech preview
+                this.updateSpeechPreview('', true, false);
                 
                 try {
                     this.recognition.start();
@@ -824,12 +1161,34 @@
                 this.isListening = false;
                 this.startBtn.disabled = false;
                 this.stopBtn.disabled = true;
+                this.sendBtn.disabled = true;
+                
+                // Clear any pending speech timeout
+                if (this.speechTimeout) {
+                    clearTimeout(this.speechTimeout);
+                    this.speechTimeout = null;
+                }
+                
+                // Reset speech state
+                this.lastInterimText = '';
+                this.pendingFinalText = '';
                 
                 if (this.recognition) {
                     this.recognition.stop();
                 }
                 
+                // Clear speech preview
+                this.updateSpeechPreview('', false, false);
+                
                 this.updateStatus('Stopped', false);
+            }
+
+            forceSendSpeech() {
+                if (this.lastInterimText || this.pendingFinalText) {
+                    // Force process the current speech immediately
+                    this.processSpeechCompletion();
+                    this.sendBtn.disabled = true;
+                }
             }
 
             copyScript() {

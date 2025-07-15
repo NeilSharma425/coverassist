@@ -22,7 +22,7 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Configuration - In production, use environment variables
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'your-gemini-api-key-here')
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 # In-memory storage for conversation sessions (use Redis/DB in production)
 conversation_sessions = {}
@@ -50,7 +50,7 @@ class ConversationSession:
         context = "\n".join([f"{msg['sender']}: {msg['text']}" for msg in recent_messages])
         return context
 
-@app.route('/')
+@app.route('/') 
 def index():
     """Serve the main application page"""
     return render_template('index.html')
